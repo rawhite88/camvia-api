@@ -2,10 +2,11 @@
   "name": "camvia-api",
   "private": true,
   "version": "1.0.0",
-  "type": "module",
+  "main": "src/index.js",
+  "type": "commonjs",
   "scripts": {
-    "dev": "node --watch src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
   },
   "dependencies": {
     "@aws-sdk/client-rekognition": "^3.864.0",
