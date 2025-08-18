@@ -1,113 +1,208 @@
-// camvia-api/src/tmdb.js
+// camvia-api/src/tmdb.js  (CommonJS)
 const express = require("express");
 const router = express.Router();
 
-const TMDB_BASE = "https://api.themoviedb.org/3";
-const V4 = (process.env.TMDB_V4_TOKEN || "").trim();
-const V3 = (process.env.TMDB_V3_KEY || "").trim();
+const TMDB_API_KEY = (process.env.TMDB_API_KEY || "").trim();
+const BASE = "https://api.themoviedb.org/3";
 
-function buildUrl(path, params = {}) {
-  const url = new URL(TMDB_BASE + path);
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+// helper: fetch JSON and forward upstream status/text on error
+async function getJson(url) {
+  const r = await fetch(url);
+  const text = await r.text();
+  if (!r.ok) {
+    const err = new Error(text || `TMDb error ${r.status}`);
+    err.status = r.status;
+    err.body = text;
+    throw err;
   }
-  if (!V4) url.searchParams.set("api_key", V3); // v3 fallback
-  return url.toString();
+  return JSON.parse(text);
 }
+const withKey = (pathAndQs) =>
+  `${BASE}${pathAndQs}${
+    pathAndQs.includes("?") ? "&" : "?"
+  }api_key=${TMDB_API_KEY}`;
 
-async function tmdbFetch(path, params = {}) {
-  const url = buildUrl(path, params);
-  const res = await fetch(url, {
-    headers: V4 ? { Authorization: `Bearer ${V4}` } : undefined,
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`TMDb ${res.status}: ${text}`);
-  }
-  return res.json();
-}
-
-// Trending
+// ---- Trending ----
 router.get("/trending/people", async (_req, res) => {
   try {
-    const data = await tmdbFetch("/trending/person/week");
-    res.json(data?.results ?? []);
+    const data = await getJson(withKey("/person/popular"));
+    res.json(data.results || []);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "tmdb-trending-people" });
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
   }
 });
+
 router.get("/trending/tv", async (_req, res) => {
   try {
-    const data = await tmdbFetch("/trending/tv/week");
-    res.json(data?.results ?? []);
+    const data = await getJson(withKey("/tv/popular"));
+    res.json(data.results || []);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "tmdb-trending-tv" });
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
   }
 });
 
-// Movies
-router.get("/movies/now_playing", async (req, res) => {
+router.get("/movies/now_playing", async (_req, res) => {
   try {
-    const page = req.query.page ?? 1;
-    const data = await tmdbFetch("/movie/now_playing", { page, region: "GB" });
-    res.json(data?.results ?? []);
+    const data = await getJson(withKey("/movie/now_playing"));
+    res.json(data.results || []);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "tmdb-now-playing" });
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
   }
 });
 
-// Person
+// ---- Person ----
 router.get("/person/:id", async (req, res) => {
   try {
-    const data = await tmdbFetch(`/person/${req.params.id}`);
+    const id = req.params.id;
+    const data = await getJson(
+      withKey(`/person/${id}?append_to_response=combined_credits`)
+    );
     res.json(data);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "tmdb-person" });
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
   }
 });
+
+router.get("/person/:id/images", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const data = await getJson(withKey(`/person/${id}/images`));
+    res.json(data);
+  } catch (e) {
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
+  }
+});
+
+router.get("/person/:id/combined_credits", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const data = await getJson(withKey(`/person/${id}/combined_credits`));
+    res.json(data);
+  } catch (e) {
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
+  }
+});
+
 router.get("/person/imdb/:imdbId", async (req, res) => {
   try {
     const imdbId = req.params.imdbId;
-    const data = await tmdbFetch(`/find/${imdbId}`, {
-      external_source: "imdb_id",
-    });
-    res.json(data?.person_results?.[0] ?? null);
+    const find = await getJson(
+      withKey(`/find/${encodeURIComponent(imdbId)}?external_source=imdb_id`)
+    );
+    const match = find.person_results?.[0];
+    if (!match?.id) return res.status(404).json({ error: "not_found" });
+    const details = await getJson(
+      withKey(`/person/${match.id}?append_to_response=combined_credits`)
+    );
+    res.json(details);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "tmdb-find-person" });
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
   }
 });
 
-// Search + credits
+// ---- Search ----
 router.get("/search", async (req, res) => {
   try {
-    const { type = "multi", query, page = 1 } = req.query;
-    if (!query) return res.status(400).json({ error: "query required" });
-    const data = await tmdbFetch(`/search/${type}`, { query, page });
-    res.json(data?.results ?? []);
+    const q = String(req.query.query || "").trim();
+    const type = String(req.query.type || "multi");
+    if (!q) return res.status(400).json({ error: "missing query" });
+    if (!["person", "movie", "tv"].includes(type))
+      return res.status(400).json({ error: "bad type" });
+
+    const data = await getJson(
+      withKey(`/search/${type}?query=${encodeURIComponent(q)}`)
+    );
+    res.json(data.results || []);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "tmdb-search" });
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
   }
 });
+
+router.get("/search/multi", async (req, res) => {
+  try {
+    const q = String(req.query.query || "").trim();
+    if (!q) return res.status(400).json({ error: "missing query" });
+    const data = await getJson(
+      withKey(`/search/multi?query=${encodeURIComponent(q)}`)
+    );
+    res.json(data.results || []);
+  } catch (e) {
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
+  }
+});
+
+// ---- Credits / Videos / Providers ----
 router.get("/credits", async (req, res) => {
   try {
-    const { media_type, id } = req.query;
-    if (!media_type || !id)
-      return res.status(400).json({ error: "media_type and id required" });
-    const path =
-      media_type === "movie"
-        ? `/movie/${id}/credits`
-        : `/tv/${id}/aggregate_credits`;
-    const data = await tmdbFetch(path);
+    const id = String(req.query.id || "").trim();
+    const mediaType = String(req.query.media_type || "").trim(); // movie|tv
+    if (!id || !["movie", "tv"].includes(mediaType))
+      return res.status(400).json({ error: "bad params" });
+
+    const data = await getJson(withKey(`/${mediaType}/${id}/credits`));
     res.json(data);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "tmdb-credits" });
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
+  }
+});
+
+router.get("/videos", async (req, res) => {
+  try {
+    const id = String(req.query.id || "").trim();
+    const mediaType = String(req.query.media_type || "").trim();
+    if (!id || !["movie", "tv"].includes(mediaType))
+      return res.status(400).json({ error: "bad params" });
+
+    const data = await getJson(withKey(`/${mediaType}/${id}/videos`));
+    res.json(data);
+  } catch (e) {
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
+  }
+});
+
+router.get("/movie/:movieId/watch/providers", async (req, res) => {
+  try {
+    const id = req.params.movieId;
+    const data = await getJson(withKey(`/movie/${id}/watch/providers`));
+    res.json(data);
+  } catch (e) {
+    res
+      .status(e.status || 500)
+      .type("application/json")
+      .send(e.body || '{"error":"tmdb"}');
   }
 });
 
