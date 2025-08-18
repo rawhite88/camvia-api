@@ -13,7 +13,7 @@ const omdbRouter = require("./omdb");
 const app = express();
 
 app.use(helmet());
-app.use(cors()); // put CORS before routes
+app.use(cors()); // <— before routes
 app.use(express.json({ limit: "10mb" }));
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
