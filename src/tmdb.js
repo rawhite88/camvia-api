@@ -1,222 +1,120 @@
-// camvia-api/src/tmdb.js (CommonJS)
-const express = require("express");
+// camvia-api/src/tmdb.js
+import express from "express";
+
 const router = express.Router();
 
-const V4_BEARER = (
-  process.env.TMDB_BEARER ||
-  process.env.TMDB_READ_TOKEN ||
-  ""
-).trim();
-const V3_KEY = (process.env.TMDB_API_KEY || "").trim();
+const TMDB_BASE = "https://api.themoviedb.org/3";
+const V4 = (process.env.TMDB_V4_TOKEN || "").trim();
+const V3 = (process.env.TMDB_V3_KEY || "").trim();
 
 function buildUrl(path, params = {}) {
-  const url = new URL("https://api.themoviedb.org/3" + path);
-  if (!V4_BEARER && V3_KEY) url.searchParams.set("api_key", V3_KEY);
-  for (const [k, v] of Object.entries(params))
-    url.searchParams.set(k, String(v));
+  const url = new URL(TMDB_BASE + path);
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+  }
+  if (!V4) url.searchParams.set("api_key", V3); // v3 fallback
   return url.toString();
 }
 
-async function tmdbGet(path, params) {
-  const headers = V4_BEARER ? { Authorization: `Bearer ${V4_BEARER}` } : {};
-  const r = await fetch(buildUrl(path, params), { headers });
-  const text = await r.text();
-  if (!r.ok) return { status: r.status, text };
-  return { json: JSON.parse(text) };
+async function tmdbFetch(path, params = {}) {
+  const url = buildUrl(path, params);
+  const res = await fetch(url, {
+    headers: V4 ? { Authorization: `Bearer ${V4}` } : undefined,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`TMDb ${res.status}: ${text}`);
+  }
+  return res.json();
 }
 
-// person (with combined_credits via append)
-router.get("/person/:id", async (req, res) => {
-  const out = await tmdbGet(`/person/${req.params.id}`, {
-    append_to_response: "combined_credits",
-  });
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-// ✅ NEW: external_ids passthrough (for imdb_id & socials)
-router.get("/person/:id/external_ids", async (req, res) => {
-  const out = await tmdbGet(`/person/${req.params.id}/external_ids`);
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-// ✅ NEW: combined_credits passthrough (for code that calls this directly)
-router.get("/person/:id/combined_credits", async (req, res) => {
-  const out = await tmdbGet(`/person/${req.params.id}/combined_credits`);
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-router.get("/person/:id/images", async (req, res) => {
-  const out = await tmdbGet(`/person/${req.params.id}/images`);
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
+// Trending
 router.get("/trending/people", async (_req, res) => {
-  const out = await tmdbGet(`/person/popular`);
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
+  try {
+    const data = await tmdbFetch("/trending/person/week");
+    res.json(data?.results ?? []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-trending-people" });
+  }
 });
 
 router.get("/trending/tv", async (_req, res) => {
-  const out = await tmdbGet(`/tv/popular`, { language: "en-US", page: 1 });
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-router.get("/movies/now_playing", async (_req, res) => {
-  const out = await tmdbGet(`/movie/now_playing`);
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-// search (generic)
-router.get("/search", async (req, res) => {
-  const { query, type = "multi" } = req.query;
-  const out = await tmdbGet(`/search/${type}`, { query });
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-// ✅ optional alias for old code: /tmdb/search/multi?query=...
-router.get("/search/multi", async (req, res) => {
-  const { query } = req.query;
-  const out = await tmdbGet(`/search/multi`, { query });
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-router.get("/person/imdb/:imdbId", async (req, res) => {
-  const { imdbId } = req.params;
-  const find = await tmdbGet(`/find/${imdbId}`, { external_source: "imdb_id" });
-  if (find.status)
-    return res.status(find.status).type("application/json").send(find.text);
-  const match = find.json.person_results?.[0];
-  if (!match?.id) return res.status(404).json({ error: "not-found" });
-  const details = await tmdbGet(`/person/${match.id}`, {
-    append_to_response: "combined_credits",
-  });
-  if (details.status)
-    return res
-      .status(details.status)
-      .type("application/json")
-      .send(details.text);
-  res.json(details.json);
-});
-
-router.get("/credits", async (req, res) => {
-  const { id, media_type } = req.query;
-  const out = await tmdbGet(`/${media_type}/${id}/credits`, {
-    language: "en-US",
-  });
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-router.get("/videos", async (req, res) => {
-  const { media_type, id } = req.query;
-  const out = await tmdbGet(`/${media_type}/${id}/videos`, {
-    language: "en-US",
-  });
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-router.get("/movie/:id/watch/providers", async (req, res) => {
-  const out = await tmdbGet(`/movie/${req.params.id}/watch/providers`);
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-// TV details
-router.get("/tv/:id", async (req, res) => {
-  const out = await tmdbGet(`/tv/${req.params.id}`);
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-// TV aggregate credits
-router.get("/tv/:id/aggregate_credits", async (req, res) => {
-  const out = await tmdbGet(`/tv/${req.params.id}/aggregate_credits`);
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-// movie details
-router.get("/movie/:id", async (req, res) => {
-  const out = await tmdbGet(`/movie/${req.params.id}`);
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-// (optional) alias for credits (you already have /tmdb/credits?media_type=movie&id=..)
-router.get("/movie/:id/credits", async (req, res) => {
-  const out = await tmdbGet(`/movie/${req.params.id}/credits`, {
-    language: "en-US",
-  });
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-// popular / top-rated / now-playing (keep your existing plural route; add singular aliases)
-router.get("/movie/popular", async (_req, res) => {
-  const out = await tmdbGet(`/movie/popular`, { language: "en-US", page: 1 });
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-router.get("/movie/top_rated", async (_req, res) => {
-  const out = await tmdbGet(`/movie/top_rated`, { language: "en-US", page: 1 });
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-// alias to your existing /movies/now_playing
-router.get("/movie/now_playing", async (_req, res) => {
-  const out = await tmdbGet(`/movie/now_playing`);
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
-});
-
-router.get("/search", async (req, res) => {
-  const {
-    query,
-    type = "multi",
-    include_adult = "false",
-    language = "en-US",
-  } = req.query;
-  if (!query || String(query).trim() === "") {
-    return res.status(400).json({ error: "missing query" });
+  try {
+    const data = await tmdbFetch("/trending/tv/week");
+    res.json(data?.results ?? []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-trending-tv" });
   }
-  const out = await tmdbGet(`/search/${type}`, {
-    query,
-    include_adult,
-    language,
-  });
-  if (out.status)
-    return res.status(out.status).type("application/json").send(out.text);
-  res.json(out.json);
 });
 
-module.exports = router;
+// Movies
+router.get("/movies/now_playing", async (req, res) => {
+  try {
+    const page = req.query.page ?? 1;
+    const data = await tmdbFetch("/movie/now_playing", { page, region: "GB" });
+    res.json(data?.results ?? []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-now-playing" });
+  }
+});
+
+// Person by TMDb id
+router.get("/person/:id", async (req, res) => {
+  try {
+    const data = await tmdbFetch(`/person/${req.params.id}`);
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-person" });
+  }
+});
+
+// Person by IMDb id
+router.get("/person/imdb/:imdbId", async (req, res) => {
+  try {
+    const imdbId = req.params.imdbId;
+    const data = await tmdbFetch(`/find/${imdbId}`, {
+      external_source: "imdb_id",
+    });
+    res.json(data?.person_results?.[0] ?? null);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-find-person" });
+  }
+});
+
+// Search (person|movie|tv|multi)
+router.get("/search", async (req, res) => {
+  try {
+    const { type = "multi", query, page = 1 } = req.query;
+    if (!query) return res.status(400).json({ error: "query required" });
+    const data = await tmdbFetch(`/search/${type}`, { query, page });
+    res.json(data?.results ?? []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-search" });
+  }
+});
+
+// Credits (movie|tv)
+router.get("/credits", async (req, res) => {
+  try {
+    const { media_type, id } = req.query;
+    if (!media_type || !id)
+      return res.status(400).json({ error: "media_type and id required" });
+    const path =
+      media_type === "movie"
+        ? `/movie/${id}/credits`
+        : `/tv/${id}/aggregate_credits`;
+    const data = await tmdbFetch(path);
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-credits" });
+  }
+});
+
+export default router;
