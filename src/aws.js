@@ -1,61 +1,120 @@
-// src/aws.js  (CommonJS)
-const express = require("express");
-const {
-  RekognitionClient,
-  RecognizeCelebritiesCommand,
-  DetectLabelsCommand,
-} = require("@aws-sdk/client-rekognition");
+// camvia-api/src/tmdb.js
+import express from "express";
 
 const router = express.Router();
 
-const client = new RekognitionClient({
-  region: process.env.AWS_REGION || "eu-west-1",
-  credentials: {
-    accessKeyId: (process.env.AWS_ACCESS_KEY_ID || "").trim(),
-    secretAccessKey: (process.env.AWS_SECRET_ACCESS_KEY || "").trim(),
-  },
-});
+const TMDB_BASE = "https://api.themoviedb.org/3";
+const V4 = (process.env.TMDB_V4_TOKEN || "").trim();
+const V3 = (process.env.TMDB_V3_KEY || "").trim();
 
-// POST /aws/recognize  { base64 }
-router.post("/recognize", async (req, res) => {
+function buildUrl(path, params = {}) {
+  const url = new URL(TMDB_BASE + path);
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+  }
+  if (!V4) url.searchParams.set("api_key", V3); // v3 fallback
+  return url.toString();
+}
+
+async function tmdbFetch(path, params = {}) {
+  const url = buildUrl(path, params);
+  const res = await fetch(url, {
+    headers: V4 ? { Authorization: `Bearer ${V4}` } : undefined,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`TMDb ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
+// Trending
+router.get("/trending/people", async (_req, res) => {
   try {
-    const { base64 } = req.body || {};
-    if (!base64) return res.status(400).json({ error: "Missing image" });
-
-    const bytes = Buffer.from(base64, "base64");
-    const out = await client.send(
-      new RecognizeCelebritiesCommand({ Image: { Bytes: bytes } })
-    );
-    res.json(out);
+    const data = await tmdbFetch("/trending/person/week");
+    res.json(data?.results ?? []);
   } catch (e) {
-    console.error("rekognition recognize error:", e);
-    res.status(500).json({ error: "rekognition-recognize-failed" });
+    console.error(e);
+    res.status(500).json({ error: "tmdb-trending-people" });
   }
 });
 
-// POST /aws/detect-labels-by-url { url, minConfidence? }
-router.post("/detect-labels-by-url", async (req, res) => {
+router.get("/trending/tv", async (_req, res) => {
   try {
-    const { url, minConfidence = 80 } = req.body || {};
-    if (!url) return res.status(400).json({ error: "Missing url" });
-
-    const r = await fetch(url);
-    if (!r.ok) {
-      return res.status(400).json({ error: "fetch-failed", status: r.status });
-    }
-    const buf = Buffer.from(await r.arrayBuffer());
-
-    const out = await client.send(
-      new DetectLabelsCommand({
-        Image: { Bytes: buf },
-        MinConfidence: Number(minConfidence) || 80,
-      })
-    );
-    res.json(out);
+    const data = await tmdbFetch("/trending/tv/week");
+    res.json(data?.results ?? []);
   } catch (e) {
-    console.error("rekognition detect-labels error:", e);
-    res.status(500).json({ error: "rekognition-detect-labels-failed" });
+    console.error(e);
+    res.status(500).json({ error: "tmdb-trending-tv" });
   }
 });
 
-module.exports = router;
+// Movies
+router.get("/movies/now_playing", async (req, res) => {
+  try {
+    const page = req.query.page ?? 1;
+    const data = await tmdbFetch("/movie/now_playing", { page, region: "GB" });
+    res.json(data?.results ?? []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-now-playing" });
+  }
+});
+
+// Person by TMDb id
+router.get("/person/:id", async (req, res) => {
+  try {
+    const data = await tmdbFetch(`/person/${req.params.id}`);
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-person" });
+  }
+});
+
+// Person by IMDb id
+router.get("/person/imdb/:imdbId", async (req, res) => {
+  try {
+    const imdbId = req.params.imdbId;
+    const data = await tmdbFetch(`/find/${imdbId}`, {
+      external_source: "imdb_id",
+    });
+    res.json(data?.person_results?.[0] ?? null);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-find-person" });
+  }
+});
+
+// Search (person|movie|tv|multi)
+router.get("/search", async (req, res) => {
+  try {
+    const { type = "multi", query, page = 1 } = req.query;
+    if (!query) return res.status(400).json({ error: "query required" });
+    const data = await tmdbFetch(`/search/${type}`, { query, page });
+    res.json(data?.results ?? []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-search" });
+  }
+});
+
+// Credits (movie|tv)
+router.get("/credits", async (req, res) => {
+  try {
+    const { media_type, id } = req.query;
+    if (!media_type || !id)
+      return res.status(400).json({ error: "media_type and id required" });
+    const path =
+      media_type === "movie"
+        ? `/movie/${id}/credits`
+        : `/tv/${id}/aggregate_credits`;
+    const data = await tmdbFetch(path);
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-credits" });
+  }
+});
+
+export default router;
