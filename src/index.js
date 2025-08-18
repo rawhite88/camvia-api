@@ -5,6 +5,8 @@ import helmet from "helmet";
 import openaiRouter from "./openai.js";
 import awsRouter from "./aws.js";
 import tmdbRouter from "./tmdb.js";
+import newsRouter from "./news.js";
+import omdbRouter from "./omdb.js";
 
 const app = express();
 app.use(helmet());
@@ -12,6 +14,8 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/openai", openaiRouter);
 app.use("/aws", awsRouter);
 app.use("/tmdb", tmdbRouter);
+app.use("/news", newsRouter);
+app.use("/omdb", omdbRouter);
 
 // Allow all origins for now (simplest while testing)
 app.use(cors());
