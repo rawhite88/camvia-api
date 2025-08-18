@@ -4,33 +4,37 @@ const router = express.Router();
 
 router.get("/entertainment", async (req, res) => {
   try {
-    const key = (process.env.NEWSDATA_API_KEY || "").trim();
-    if (!key)
-      return res.status(500).json({ error: "missing NEWSDATA_API_KEY" });
+    const { country, language, size } = req.query;
 
-    const { language = "en", page, q } = req.query;
-
-    // Use latest and ALWAYS include q
     const url = new URL("https://newsdata.io/api/1/latest");
-    url.searchParams.set("apikey", key);
-    url.searchParams.set("language", String(language));
+    url.searchParams.set("apikey", (process.env.NEWSDATA_API_KEY || "").trim());
     url.searchParams.set(
       "q",
-      (q && String(q).trim()) ||
-        "movie OR tv OR netflix OR trailer OR film OR streaming"
+      "movie OR tv OR netflix OR trailer OR film OR streaming"
     );
 
-    // Only include page if the client provided a nextPage token
-    if (page && String(page).trim()) {
-      url.searchParams.set("page", String(page).trim());
+    if (country) url.searchParams.set("country", String(country));
+    if (language) url.searchParams.set("language", String(language));
+    if (size) url.searchParams.set("size", String(size)); // e.g. 20 or 30
+
+    // Only forward `page` when it's a real nextPage token
+    const token = req.query.page;
+    if (typeof token === "string" && /^[A-Za-z0-9_-]+$/.test(token)) {
+      url.searchParams.set("page", token);
     }
+
+    console.log("[news] GET", url.toString());
 
     const r = await fetch(url);
     const text = await r.text();
-    return res.status(r.status).type("application/json").send(text);
+    if (!r.ok) {
+      console.error("[news] upstream", r.status, text);
+      return res.status(r.status).type("application/json").send(text);
+    }
+    return res.type("application/json").send(text);
   } catch (e) {
-    console.error("NewsData error:", e);
-    res.status(500).json({ error: "newsdata-error" });
+    console.error("[news] error:", e);
+    res.status(500).json({ status: "error", message: "newsdata-proxy-failed" });
   }
 });
 
