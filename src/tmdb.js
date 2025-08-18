@@ -142,4 +142,81 @@ router.get("/movie/:id/watch/providers", async (req, res) => {
   res.json(out.json);
 });
 
+// TV details
+router.get("/tv/:id", async (req, res) => {
+  const out = await tmdbGet(`/tv/${req.params.id}`);
+  if (out.status)
+    return res.status(out.status).type("application/json").send(out.text);
+  res.json(out.json);
+});
+
+// TV aggregate credits
+router.get("/tv/:id/aggregate_credits", async (req, res) => {
+  const out = await tmdbGet(`/tv/${req.params.id}/aggregate_credits`);
+  if (out.status)
+    return res.status(out.status).type("application/json").send(out.text);
+  res.json(out.json);
+});
+
+// movie details
+router.get("/movie/:id", async (req, res) => {
+  const out = await tmdbGet(`/movie/${req.params.id}`);
+  if (out.status)
+    return res.status(out.status).type("application/json").send(out.text);
+  res.json(out.json);
+});
+
+// (optional) alias for credits (you already have /tmdb/credits?media_type=movie&id=..)
+router.get("/movie/:id/credits", async (req, res) => {
+  const out = await tmdbGet(`/movie/${req.params.id}/credits`, {
+    language: "en-US",
+  });
+  if (out.status)
+    return res.status(out.status).type("application/json").send(out.text);
+  res.json(out.json);
+});
+
+// popular / top-rated / now-playing (keep your existing plural route; add singular aliases)
+router.get("/movie/popular", async (_req, res) => {
+  const out = await tmdbGet(`/movie/popular`, { language: "en-US", page: 1 });
+  if (out.status)
+    return res.status(out.status).type("application/json").send(out.text);
+  res.json(out.json);
+});
+
+router.get("/movie/top_rated", async (_req, res) => {
+  const out = await tmdbGet(`/movie/top_rated`, { language: "en-US", page: 1 });
+  if (out.status)
+    return res.status(out.status).type("application/json").send(out.text);
+  res.json(out.json);
+});
+
+// alias to your existing /movies/now_playing
+router.get("/movie/now_playing", async (_req, res) => {
+  const out = await tmdbGet(`/movie/now_playing`);
+  if (out.status)
+    return res.status(out.status).type("application/json").send(out.text);
+  res.json(out.json);
+});
+
+router.get("/search", async (req, res) => {
+  const {
+    query,
+    type = "multi",
+    include_adult = "false",
+    language = "en-US",
+  } = req.query;
+  if (!query || String(query).trim() === "") {
+    return res.status(400).json({ error: "missing query" });
+  }
+  const out = await tmdbGet(`/search/${type}`, {
+    query,
+    include_adult,
+    language,
+  });
+  if (out.status)
+    return res.status(out.status).type("application/json").send(out.text);
+  res.json(out.json);
+});
+
 module.exports = router;
