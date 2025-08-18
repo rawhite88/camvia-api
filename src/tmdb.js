@@ -25,11 +25,27 @@ async function tmdbGet(path, params) {
   return { json: JSON.parse(text) };
 }
 
-// routes
+// person (with combined_credits via append)
 router.get("/person/:id", async (req, res) => {
   const out = await tmdbGet(`/person/${req.params.id}`, {
     append_to_response: "combined_credits",
   });
+  if (out.status)
+    return res.status(out.status).type("application/json").send(out.text);
+  res.json(out.json);
+});
+
+// ✅ NEW: external_ids passthrough (for imdb_id & socials)
+router.get("/person/:id/external_ids", async (req, res) => {
+  const out = await tmdbGet(`/person/${req.params.id}/external_ids`);
+  if (out.status)
+    return res.status(out.status).type("application/json").send(out.text);
+  res.json(out.json);
+});
+
+// ✅ NEW: combined_credits passthrough (for code that calls this directly)
+router.get("/person/:id/combined_credits", async (req, res) => {
+  const out = await tmdbGet(`/person/${req.params.id}/combined_credits`);
   if (out.status)
     return res.status(out.status).type("application/json").send(out.text);
   res.json(out.json);
@@ -63,10 +79,19 @@ router.get("/movies/now_playing", async (_req, res) => {
   res.json(out.json);
 });
 
+// search (generic)
 router.get("/search", async (req, res) => {
   const { query, type = "multi" } = req.query;
-  const path = `/search/${type}`;
-  const out = await tmdbGet(path, { query });
+  const out = await tmdbGet(`/search/${type}`, { query });
+  if (out.status)
+    return res.status(out.status).type("application/json").send(out.text);
+  res.json(out.json);
+});
+
+// ✅ optional alias for old code: /tmdb/search/multi?query=...
+router.get("/search/multi", async (req, res) => {
+  const { query } = req.query;
+  const out = await tmdbGet(`/search/multi`, { query });
   if (out.status)
     return res.status(out.status).type("application/json").send(out.text);
   res.json(out.json);
