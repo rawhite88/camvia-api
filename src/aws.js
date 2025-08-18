@@ -1,15 +1,15 @@
-// src/aws.js  (CommonJS)
-const express = require("express");
-const {
+// src/aws.js (ESM)
+import { Router } from "express";
+import {
   RekognitionClient,
   RecognizeCelebritiesCommand,
   DetectLabelsCommand,
-} = require("@aws-sdk/client-rekognition");
+} from "@aws-sdk/client-rekognition";
 
-const router = express.Router();
+const router = Router();
 
 const client = new RekognitionClient({
-  region: process.env.AWS_REGION || "eu-west-1",
+  region: process.env.AWS_REGION ?? "eu-west-1",
   credentials: {
     accessKeyId: (process.env.AWS_ACCESS_KEY_ID || "").trim(),
     secretAccessKey: (process.env.AWS_SECRET_ACCESS_KEY || "").trim(),
@@ -22,7 +22,10 @@ router.post("/recognize", async (req, res) => {
     const { base64 } = req.body || {};
     if (!base64) return res.status(400).json({ error: "Missing image" });
 
-    const bytes = Buffer.from(base64, "base64");
+    // Strip data URL prefix if present
+    const b64 = base64.replace(/^data:.*;base64,/, "");
+    const bytes = Buffer.from(b64, "base64");
+
     const out = await client.send(
       new RecognizeCelebritiesCommand({ Image: { Bytes: bytes } })
     );
@@ -39,6 +42,7 @@ router.post("/detect-labels-by-url", async (req, res) => {
     const { url, minConfidence = 80 } = req.body || {};
     if (!url) return res.status(400).json({ error: "Missing url" });
 
+    // Node 18+ has global fetch
     const r = await fetch(url);
     if (!r.ok) {
       return res.status(400).json({ error: "fetch-failed", status: r.status });
@@ -58,4 +62,4 @@ router.post("/detect-labels-by-url", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

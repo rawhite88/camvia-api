@@ -1,7 +1,7 @@
-// camvia-api/src/tmdb.js
-import express from "express";
+// camvia-api/src/tmdb.js (ESM)
+import { Router } from "express";
 
-const router = express.Router();
+const router = Router();
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
 const V4 = (process.env.TMDB_V4_TOKEN || "").trim();
@@ -19,7 +19,12 @@ function buildUrl(path, params = {}) {
 async function tmdbFetch(path, params = {}) {
   const url = buildUrl(path, params);
   const res = await fetch(url, {
-    headers: V4 ? { Authorization: `Bearer ${V4}` } : undefined,
+    headers: V4
+      ? {
+          Authorization: `Bearer ${V4}`,
+          Accept: "application/json",
+        }
+      : { Accept: "application/json" },
   });
   if (!res.ok) {
     const text = await res.text();
@@ -52,7 +57,7 @@ router.get("/trending/tv", async (_req, res) => {
 // Movies
 router.get("/movies/now_playing", async (req, res) => {
   try {
-    const page = req.query.page ?? 1;
+    const page = Number(req.query.page) || 1;
     const data = await tmdbFetch("/movie/now_playing", { page, region: "GB" });
     res.json(data?.results ?? []);
   } catch (e) {
@@ -117,10 +122,10 @@ router.get("/credits", async (req, res) => {
   }
 });
 
-// Popular (to match your old "popular" calls)
+// Popular
 router.get("/person/popular", async (req, res) => {
   try {
-    const page = req.query.page ?? 1;
+    const page = Number(req.query.page) || 1;
     const data = await tmdbFetch("/person/popular", { page });
     res.json(data?.results ?? []);
   } catch (e) {
@@ -131,7 +136,7 @@ router.get("/person/popular", async (req, res) => {
 
 router.get("/tv/popular", async (req, res) => {
   try {
-    const page = req.query.page ?? 1;
+    const page = Number(req.query.page) || 1;
     const data = await tmdbFetch("/tv/popular", { page });
     res.json(data?.results ?? []);
   } catch (e) {
@@ -162,7 +167,7 @@ router.get("/person/:id/combined_credits", async (req, res) => {
   }
 });
 
-// Search multi
+// Search multi (kept for compatibility)
 router.get("/search/multi", async (req, res) => {
   try {
     const { query, page = 1 } = req.query;

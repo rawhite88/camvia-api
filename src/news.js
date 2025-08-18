@@ -1,6 +1,7 @@
-// src/news.js
-const express = require("express");
-const router = express.Router();
+// src/news.js (ESM)
+import { Router } from "express";
+
+const router = Router();
 
 router.get("/entertainment", async (req, res) => {
   try {
@@ -38,4 +39,4 @@ router.get("/entertainment", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

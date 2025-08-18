@@ -1,6 +1,7 @@
-// camvia-api/src/omdb.js
-const express = require("express");
-const router = express.Router();
+// camvia-api/src/omdb.js (ESM)
+import { Router } from "express";
+
+const router = Router();
 
 router.get("/search", async (req, res) => {
   try {
@@ -26,11 +27,14 @@ router.get("/search", async (req, res) => {
 router.get("/title", async (req, res) => {
   try {
     const { i, t, y, plot = "short" } = req.query;
+
     const url = new URL("https://www.omdbapi.com/");
     url.searchParams.set("apikey", (process.env.OMDB_API_KEY || "").trim());
+
     if (i) url.searchParams.set("i", String(i));
     else if (t) url.searchParams.set("t", String(t));
     else return res.status(400).json({ error: "i or t required" });
+
     if (y) url.searchParams.set("y", String(y));
     url.searchParams.set("plot", String(plot));
 
@@ -43,4 +47,4 @@ router.get("/title", async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
