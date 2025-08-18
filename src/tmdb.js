@@ -207,4 +207,26 @@ router.get("/movie/:id/watch/providers", async (req, res) => {
   }
 });
 
+// Movie details
+router.get("/movie/:id", async (req, res) => {
+  try {
+    const data = await tmdbFetch(`/movie/${req.params.id}`);
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-movie" });
+  }
+});
+
+// External IDs for a movie (to get imdb_id)
+router.get("/movie/:id/external_ids", async (req, res) => {
+  try {
+    const data = await tmdbFetch(`/movie/${req.params.id}/external_ids`);
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-external-ids" });
+  }
+});
+
 export default router;
