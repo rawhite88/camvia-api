@@ -1,30 +1,26 @@
-// src/openai.js
-import express from "express";
-
+// src/openai.js (CommonJS + OpenAI SDK)
+const express = require("express");
+const OpenAI = require("openai");
 const router = express.Router();
+
+const client = new OpenAI({
+  apiKey: (process.env.OPENAI_API_KEY || "").trim(),
+});
 
 router.post("/chat", async (req, res) => {
   try {
-    const resp = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      // Frontend can send { model, messages, ... } — we pass it through
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        ...req.body,
-      }),
-    });
-
-    const data = await resp.json();
-    if (!resp.ok) return res.status(resp.status).json(data);
-    res.json(data);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "OpenAI proxy failed" });
+    const { messages, model = "gpt-4o-mini-2024-07-18" } = req.body || {};
+    if (!Array.isArray(messages)) {
+      return res.status(400).json({ error: "messages array required" });
+    }
+    const out = await client.chat.completions.create({ model, messages });
+    res.json(out);
+  } catch (e) {
+    console.error("OpenAI chat error:", e?.response?.data || e?.message || e);
+    res
+      .status(e?.status || 500)
+      .json({ error: "openai-chat-failed", detail: e?.message || "unknown" });
   }
 });
 
-export default router;
+module.exports = router;
