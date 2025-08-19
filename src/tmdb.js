@@ -229,4 +229,37 @@ router.get("/movie/:id/external_ids", async (req, res) => {
   }
 });
 
+// TV details
+router.get("/tv/:id", async (req, res) => {
+  try {
+    const data = await tmdbFetch(`/tv/${req.params.id}`);
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-tv" });
+  }
+});
+
+// TV external IDs (to get imdb_id)
+router.get("/tv/:id/external_ids", async (req, res) => {
+  try {
+    const data = await tmdbFetch(`/tv/${req.params.id}/external_ids`);
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-tv-external-ids" });
+  }
+});
+
+// TV watch providers
+router.get("/tv/:id/watch/providers", async (req, res) => {
+  try {
+    const data = await tmdbFetch(`/tv/${req.params.id}/watch/providers`);
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-tv-watch-providers" });
+  }
+});
+
 export default router;
