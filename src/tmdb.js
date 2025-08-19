@@ -4,7 +4,8 @@ import { Router } from "express";
 const router = Router();
 
 const TMDB_BASE = "https://api.themoviedb.org/3";
-const V4 = (process.env.TMDB_V4_TOKEN || "").trim();
+// camvia-api/src/tmdb.js
+const V4 = (process.env.TMDB_V4_TOKEN || process.env.TMDB_BEARER || "").trim();
 const V3 = (process.env.TMDB_V3_KEY || "").trim();
 
 function buildUrl(path, params = {}) {
