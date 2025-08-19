@@ -194,6 +194,16 @@ router.get("/person/:id/combined_credits", async (req, res) => {
   }
 });
 
+router.get("/person/:id/external_ids", async (req, res) => {
+  try {
+    const data = await tmdbFetch(`/person/${req.params.id}/external_ids`);
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "tmdb-person-external-ids" });
+  }
+});
+
 /* ------------------------------- Credits -------------------------------- */
 
 router.get("/credits", async (req, res) => {
